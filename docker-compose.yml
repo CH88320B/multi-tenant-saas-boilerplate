@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: saas
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  mailpit:
+    # Catches outgoing email locally; UI at http://localhost:8025
+    image: axllent/mailpit:v1.20
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+  migrate:
+    build: .
+    command: ["node", "scripts/migrate.js"]
+    environment:
+      MIGRATION_DATABASE_URL: postgres://postgres:postgres@db:5432/saas
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgres://app_user:app_user@db:5432/saas
+      JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-me-at-least-32-chars}
+      SMTP_URL: smtp://mailpit:1025
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+      STRIPE_PRICE_ENTERPRISE: ${STRIPE_PRICE_ENTERPRISE:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
